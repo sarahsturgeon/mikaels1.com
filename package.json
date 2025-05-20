@@ -1,0 +1,16 @@
+{
+    "scripts": {
+        "tw:build": "npx @tailwindcss/cli -i ./src/css/tailwind.css -o ./public/css/tailwind.css",
+        "tw:build:watch": "npx @tailwindcss/cli -i ./src/css/tailwind.css -o ./public/css/tailwind.css --watch"
+    },
+    "dependencies": {
+        "@tailwindcss/cli": "^4.1.7",
+        "@tailwindcss/vite": "^4.1.7",
+        "autoprefixer": "^10.4.7",
+        "postcss": "^8.4.13",
+        "tailwindcss": "^4.1.7"
+    },
+    "devDependencies": {
+        "serve": "^13.0.2"
+    }
+}
