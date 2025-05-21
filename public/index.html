@@ -1,5 +1,4 @@
 <!doctype html>
-
 <html style="background: black;">
   <head>
     <meta charset="UTF-8">
@@ -19,11 +18,11 @@
   <body>
     <div class="vignette"></div>
     <div style="position: relative; width: 100vw; height: 100vh; overflow: hidden;">
-      <video id="background-video-1" class="video-js brightness-70"></video>
-      <video id="background-video-2" class="video-js brightness-70 hidden-video"></video>
+      <video id="background-video-1" class="video-js brightness-60"></video>
+      <video id="background-video-2" class="video-js brightness-60"></video>
     </div>
 
-    <div class="min-h-screen min-w-full" style="font-family: 'Anton';position: absolute;top: 0;">
+    <div class="min-h-screen min-w-full" style="font-family: 'Anton';position: absolute;top: 0;z-index: 30;">
       <div class="flex flex-col min-h-screen justify-center items-center px-20" style="padding-bottom: 12%;">
         <h3 class="text-6xl text-gray-100 my-8 text-center text-shadow-md">MikaelS1</h3>
         <div id="links-holder" class="flex flex-row flex-wrap items-end justify-center gap-8">
@@ -62,24 +61,38 @@
         </div>
       </div>
     </div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.22.0/video.min.js" integrity="sha512-0ywUhsu4ODVwVU1HQMDcn8CrHXxOiWgEj0uPabkuRQFUQpgtdguHnOZ4Uihz9Y9WUSJQphS2dp3jOlB0QwD0iA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script>
-      const clips = ["clip1", "clip2", "clip3", "clip4", "clip5", "clip6", "clip7", "clip8", "clip9", "clip10"];
-      let currentClipIndex = 0;
-      let activePlayerSlot = 0;
 
-      // Common Video.js options
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.22.0/video.min.js"></script>
+
+    <script>
+      function shuffle(array) {
+        let currentIndex = array.length;
+
+        while (currentIndex != 0) {
+
+          let randomIndex = Math.floor(Math.random() * currentIndex);
+          currentIndex--;
+
+          [array[currentIndex], array[randomIndex]] = [
+            array[randomIndex], array[currentIndex]];
+        }
+      }
+
+      const FADE_DURATION_S = 0.25;
+      const ANTICIPATE_END_S = FADE_DURATION_S + 0.5;
+
+      const clips = ["clip1", "clip2", "clip3", "clip4", "clip5", "clip6", "clip7", "clip8", "clip9", "clip10"];
+      shuffle(clips);
+
+      let currentClipIndex = 0; 
+      let activePlayerLogicalIndex = 0;
+      let transitionTimeoutId = null;
+
       const playerOptions = {
-        preload: "auto",
-        autoplay: false,
-        muted: true,
-        playsinline: true,
-        fill: true,
-        controls: false,
-        disablePictureInPicture: true
+        preload: "auto", autoplay: false, muted: true, playsinline: true,
+        fill: true, controls: false, disablePictureInPicture: true
       };
 
-      // Initialize players
       const player1 = videojs("background-video-1", playerOptions);
       const player2 = videojs("background-video-2", playerOptions);
       const players = [player1, player2];
@@ -88,54 +101,116 @@
         document.getElementById("background-video-2")
       ];
 
+      playerElements.forEach((el) => {
+        el.classList.add("video-player-container");
+        el.style.transition = `opacity ${FADE_DURATION_S}s ease-in-out`;
+      });
+
       const getClipUrl = (clipName) => `https://media.mikaels1.com/${clipName}.mp4`;
 
-      function transitionToNextClip() {
-        const previouslyActiveSlot = activePlayerSlot;
+      function scheduleTransition(playerInstance) {
+        if (transitionTimeoutId) clearTimeout(transitionTimeoutId);
+        const playerIndex = players.indexOf(playerInstance);
+        const attemptToGetDuration = () => {
+          const duration = playerInstance.duration();
+          if (duration && !isNaN(duration) && duration > 0) {
+            const timeToStartFadeMs = (duration * 1000) - (ANTICIPATE_END_S * 1000);
+            const safeTimeToStartFadeMs = Math.max(150, timeToStartFadeMs);
 
-        activePlayerSlot = (activePlayerSlot + 1) % 2;
-        currentClipIndex = (currentClipIndex + 1) % clips.length;
-
-        const playerToPlayNow = players[activePlayerSlot];
-        const elementToShow = playerElements[activePlayerSlot];
-
-        const playerToPreloadNext = players[previouslyActiveSlot];
-        const elementToHide = playerElements[previouslyActiveSlot];
-
-        console.log("Transitioning to clip:", clips[currentClipIndex]);
-        console.log("Preloading next clip:", clips[(currentClipIndex + 1) % clips.length]);
-        console.log("Active player slot:", activePlayerSlot);
-        console.log("elementToShow:", elementToShow);
-        console.log("elementToHide:", elementToHide);
-
-
-        playerToPlayNow.play().catch(e => console.error("Video play error:", e));
-
-        elementToShow.classList.toggle("hidden-video");
-        elementToHide.classList.toggle("hidden-video");
-
-        const nextClipToLoadIndex = (currentClipIndex + 1) % clips.length;
-        const nextClipName = clips[nextClipToLoadIndex];
-
-        playerToPreloadNext.src({ type: "video/mp4", src: getClipUrl(nextClipName) });
-        playerToPreloadNext.load();
-
-        playerToPreloadNext.off("ended", transitionToNextClip);
-        playerToPlayNow.on("ended", transitionToNextClip);
+            transitionTimeoutId = setTimeout(() => performTransition(playerInstance), safeTimeToStartFadeMs);
+          } else {
+            playerInstance.one("loadedmetadata", attemptToGetDuration);
+            playerInstance.one("error", () => console.error(`P${playerIndex} error, cannot get duration for scheduling.`));
+          }
+        };
+        if (playerInstance.readyState() >= 1) attemptToGetDuration();
+        else {
+          playerInstance.one("loadedmetadata", attemptToGetDuration);
+          playerInstance.one("error", () => console.error(`P${playerIndex} error before metadata for scheduling.`));
+        }
       }
 
+      function performTransition(endingPlayerInstance) {
+        const fadingOutPlayerInstance = endingPlayerInstance;
+        const fadingOutPlayerElement = playerElements[players.indexOf(fadingOutPlayerInstance)];
+        const fadingOutLogicalPlayerIndex = activePlayerLogicalIndex;
+
+        if (!fadingOutPlayerElement.classList.contains("is-active")) {
+          return;
+        }
+
+        if (transitionTimeoutId) clearTimeout(transitionTimeoutId);
+        fadingOutPlayerInstance.off("ended", performTransitionFallback);
+
+        // --- PHASE 1: FADE OUT CURRENT PLAYER ---
+        fadingOutPlayerElement.classList.remove("is-active");
+        fadingOutPlayerElement.classList.add("is-preloading");
+
+        const onFadeOutComplete = (event) => {
+          if (event.target === fadingOutPlayerElement && event.propertyName === "opacity") {
+            fadingOutPlayerInstance.pause();
+
+            // --- PHASE 2: FADE IN NEXT PLAYER ---
+            const nextPlayerLogicalIndex = (fadingOutLogicalPlayerIndex + 1) % 2;
+            const nextPlayerInstance = players[nextPlayerLogicalIndex];
+            const nextPlayerElement = playerElements[nextPlayerLogicalIndex];
+
+            // Update global state for the NEWLY active player and its clip
+            activePlayerLogicalIndex = nextPlayerLogicalIndex;
+            currentClipIndex = (currentClipIndex + 1) % clips.length; 
+
+            nextPlayerElement.classList.remove("is-preloading");
+            nextPlayerElement.classList.add("is-active");
+
+            nextPlayerInstance.play().catch(e => console.error(`Play error P${activePlayerLogicalIndex} (Clip: "${clips[currentClipIndex]}"):`, e));
+
+            scheduleTransition(nextPlayerInstance);
+            nextPlayerInstance.one("ended", performTransitionFallback);
+
+            // Preload the *next-next* clip for the player that is now hidden (fadingOutPlayerInstance)
+            const clipToPreloadForHiddenPlayer = (currentClipIndex + 1) % clips.length;
+
+            const clipNameToPreload = clips[clipToPreloadForHiddenPlayer];
+            fadingOutPlayerInstance.src({ type: "video/mp4", src: getClipUrl(clipNameToPreload) });
+            fadingOutPlayerInstance.load();
+          }
+        };
+        fadingOutPlayerElement.addEventListener("transitionend", onFadeOutComplete, { once: true });
+      }
+
+      function performTransitionFallback() {
+        const endedPlayerInstance = this;
+        const endedPlayerIndex = players.indexOf(endedPlayerInstance);
+        if (endedPlayerIndex === activePlayerLogicalIndex && playerElements[endedPlayerIndex].classList.contains("is-active")) {
+          performTransition(endedPlayerInstance);
+        } else {
+        }
+      }
+
+      // Initial setup
+      playerElements[0].classList.add("is-active");
+      playerElements[1].classList.add("is-preloading");
+
       player1.on("ready", () => {
-        player1.on("ended", transitionToNextClip);
+        currentClipIndex = 0; 
+        playerElements[0].classList.add("is-active");
+        playerElements[0].classList.remove("is-preloading");
         player1.src({ type: "video/mp4", src: getClipUrl(clips[currentClipIndex]) });
-        player1.play().catch(e => console.error("Initial video play error:", e));
-      })
+        player1.play().catch(e => console.error(`Initial play error P0 (Clip: "${clips[currentClipIndex]}"):`, e));
+        scheduleTransition(player1);
+        player1.one("ended", performTransitionFallback);
+      });
 
       player2.on("ready", () => {
-        const firstClipToPreloadName = clips[(currentClipIndex + 1) % clips.length];
-        player2.src({ type: "video/mp4", src: getClipUrl(firstClipToPreloadName) });
-        player2.load();
-      })
-
+        playerElements[1].classList.add("is-preloading");
+        playerElements[1].classList.remove("is-active");
+        if (clips.length > 1) {
+          const clipToPreloadForP2Index = (0 + 1) % clips.length; // P2 preloads clip after P1's initial clip (idx 0)
+          const clipNameToPreload = clips[clipToPreloadForP2Index];
+          player2.src({ type: "video/mp4", src: getClipUrl(clipNameToPreload) });
+          player2.load();
+        }
+      });
     </script>
   </body>
 </html>
